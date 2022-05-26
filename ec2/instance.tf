@@ -18,16 +18,42 @@ resource "aws_eip_association" "choshsh" {
   allocation_id = aws_eip.choshsh.id
 }
 
+data "aws_iam_policy_document" "ec2" {
+  statement {
+    actions = ["sts:AssumeRole"]
+
+    principals {
+      type        = "Service"
+      identifiers = ["ec2.amazonaws.com"]
+    }
+  }
+}
+
+resource "aws_iam_role" "ec2" {
+  name = "choshsh-ec2-role"
+
+  assume_role_policy = data.aws_iam_policy_document.ec2.json
+  managed_policy_arns = [
+    "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM",
+    "arn:aws:iam::801167518143:policy/user/s3_read"
+  ]
+}
+
+resource "aws_iam_instance_profile" "default" {
+  role = aws_iam_role.ec2.name
+}
+
 module "ec2_instance" {
   source  = "terraform-aws-modules/ec2-instance/aws"
   version = "~> 4.0"
 
-  name                        = "choshsh-instance"
-  ami                         = "ami-02c3627b04781eada"
-  instance_type               = "t2.micro"
-  key_name                    = "MyKeyPair"
-  user_data                   = file("${path.module}/init_instance.sh")
+  name          = "choshsh-instance"
+  ami           = "ami-02c3627b04781eada"
+  instance_type = "t2.micro"
+  # key_name      = "MyKeyPair"
+  # user_data                   = file("${path.module}/init_instance.sh")
   user_data_replace_on_change = true
+  iam_instance_profile        = aws_iam_instance_profile.default.id
 
   vpc_security_group_ids = [module.ec2_sg.security_group_id]
 
@@ -70,5 +96,5 @@ module "ec2_sg" {
 }
 
 output "ec2_public_dns" {
-  value = module.ec2_instance.public_dns
+  value = aws_eip.choshsh.public_dns
 }
